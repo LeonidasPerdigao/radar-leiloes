@@ -1,55 +1,54 @@
 import streamlit as st
 import pandas as pd
 
-# Configuração da página
-st.set_page_config(page_title="Radar de Leilões Brasil", layout="wide")
+st.set_page_config(page_title="Radar de Leilões Pro", layout="wide")
 
-st.title("🚗 Analisador de Oportunidades em Leilões")
-st.subheader("Simulação de Lucratividade e Análise de Risco")
+st.title("📊 Calculadora de Viabilidade de Leilão")
 
-# --- PAINEL LATERAL (ENTRADA DE DADOS) ---
-st.sidebar.header("Dados do Veículo")
-modelo = st.sidebar.text_input("Modelo do Carro", "Honda Civic 2020")
-valor_fipe = st.sidebar.number_input("Valor de Tabela FIPE (R$)", min_value=1000, value=100000)
-lance_vitoria = st.sidebar.number_input("Valor do seu Lance (R$)", min_value=1000, value=60000)
-tipo_leilao = st.sidebar.selectbox("Tipo de Leilão", ["Recuperado de Financiamento", "Seguradora (Pequena Monta)", "Seguradora (Média Monta)"])
+# --- ENTRADA DE DADOS ---
+st.sidebar.header("1. Dados do Arremate")
+modelo = st.sidebar.text_input("Modelo", "Ex: Corolla 2022")
+valor_fipe = st.sidebar.number_input("Valor FIPE Atual (R$)", value=80000)
+lance_proposto = st.sidebar.number_input("Seu Lance Máximo (R$)", value=45000)
 
-# --- LÓGICA DE CÁLCULO (O "CÉREBRO") ---
-comissao_leiloeiro = lance_vitoria * 0.05
-taxa_administrativa = 1500 # Média Brasil
-logistica_est = 1200 # Guincho e transporte
-custo_total = lance_vitoria + comissao_leiloeiro + taxa_administrativa + logistica_est
+st.sidebar.header("2. Taxas e Logística")
+porte_veiculo = st.sidebar.selectbox("Porte do Veículo", ["Pequeno (Motos/Hatch)", "Médio (Sedan/SUV)", "Grande (Caminhonete/Van)"])
+distancia_km = st.sidebar.number_input("Distância do Pátio (KM)", value=100)
+custo_km = st.sidebar.slider("Valor do Guincho por KM (R$)", 2.5, 10.0, 4.5)
 
-# Valor de revenda estimado (Carro de leilão perde 25% a 30% do valor de mercado)
-valor_revenda_est = valor_fipe * 0.75
-lucro_estimado = valor_revenda_est - custo_total
-margem_percentual = (lucro_estimado / custo_total) * 100
+# --- LÓGICA DE CÁLCULO AJUSTADA ---
+# Taxa administrativa média por porte
+taxas_por_porte = {"Pequeno (Motos/Hatch)": 900, "Médio (Sedan/SUV)": 1600, "Grande (Caminhonete/Van)": 2400}
+taxa_adm_fixa = taxas_por_porte[porte_veiculo]
 
-# --- EXIBIÇÃO DOS RESULTADOS ---
-col1, col2, col3 = st.columns(3)
+comissao_leiloeiro = lance_proposto * 0.05
+icms_estatutario = lance_proposto * 0.009 # Média de 0.9% cobrada em editais
+frete_total = distancia_km * custo_km
+documentacao_est = 1200 # Transferência + taxas Detran
 
-with col1:
-    st.metric("Custo Total (C/ Taxas)", f"R$ {custo_total:,.2f}")
+custo_total = lance_proposto + comissao_leiloeiro + taxa_adm_fixa + icms_estatutario + frete_total + documentacao_est
 
-with col2:
-    color = "normal" if lucro_estimado > 5000 else "inverse"
-    st.metric("Lucro Estimado na Revenda", f"R$ {lucro_estimado:,.2f}", delta=f"{margem_percentual:.1f}%")
+# Cálculo de Margem Realista (Carro de leilão vende com 20% a 30% de desconto)
+valor_venda_alvo = valor_fipe * 0.80 
+lucro_liquido = valor_venda_alvo - custo_total
+roi = (lucro_liquido / custo_total) * 100
 
-with col3:
-    if tipo_leilao == "Seguradora (Média Monta)":
-        st.error("RISCO: ALTO (Dificuldade de Seguro/Revenda)")
-    elif lucro_estimado < 2000:
-        st.warning("RISCO: MARGEM BAIXA")
-    else:
-        st.success("OPORTUNIDADE: VERDE")
+# --- EXIBIÇÃO ---
+c1, c2, c3 = st.columns(3)
+c1.metric("Custo Final", f"R$ {custo_total:,.2f}")
+c2.metric("Lucro Líquido Est.", f"R$ {lucro_liquido:,.2f}")
+c3.metric("ROI (Retorno)", f"{roi:.1f}%")
 
-# --- TABELA DE DETALHAMENTO ---
-st.write("---")
-st.write("### Detalhamento Financeiro")
-df_detalhes = pd.DataFrame({
-    "Item": ["Lance", "Comissão (5%)", "Taxas Adm.", "Logística/Documento", "VALOR FINAL"],
-    "Valor (R$)": [f"{lance_vitoria:,.2f}", f"{comissao_leiloeiro:,.2f}", f"{taxa_administrativa:,.2f}", f"{logistica_est:,.2f}", f"{custo_total:,.2f}"]
+if lucro_liquido > 8000:
+    st.success("✅ OPORTUNIDADE REAL: Margem de lucro segura.")
+elif lucro_liquido > 0:
+    st.warning("⚠️ ATENÇÃO: Margem apertada. Qualquer conserto extra tira o lucro.")
+else:
+    st.error("❌ PREJUÍZO: O custo total supera o valor de revenda de leilão.")
+
+st.write("### Detalhamento dos Custos Ocultos")
+tabela = pd.DataFrame({
+    "Descrição": ["Lance Base", "Comissão Leiloeiro (5%)", "Taxa Adm. Pátio", "ICMS/Taxas Editais", "Guincho/Logística", "Docs/Detran"],
+    "Valor": [lance_proposto, comissao_leiloeiro, taxa_adm_fixa, icms_estatutario, frete_total, documentacao_est]
 })
-st.table(df_detalhes)
-
-st.info("Nota: Este app é um simulador. Para integração em tempo real com leiloeiros, é necessário contratar uma API de dados (como CheckLeilão ou OlhoNoCarro).")
+st.table(tabela.assign(Valor=tabela['Valor'].map('R$ {:,.2f}'.format)))

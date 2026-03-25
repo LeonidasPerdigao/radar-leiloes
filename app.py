@@ -6,34 +6,26 @@ from datetime import datetime
 # Configuração da Página
 st.set_page_config(page_title="Radar Leilão Pro", page_icon="🏎️", layout="wide")
 
-# CSS para customização de Layout Moderno
+# --- CSS CORRIGIDO (Dando vida ao layout moderno) ---
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
-    .stMetric {
+    div[data-testid="stMetric"] {
         background-color: #ffffff;
-        padding: 20px;
-        border-radius: 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border: 1px solid #eee;
-    }
-    div[data-testid="stMetricValue"] { font-size: 1.8rem; color: #1e293b; }
-    .status-card {
-        padding: 25px;
-        border-radius: 15px;
-        margin-bottom: 25px;
-        text-align: center;
-        font-family: 'sans-serif';
-    }
-    .report-box {
-        background-color: #f1f5f9;
         padding: 15px;
-        border-radius: 10px;
-        border: 1px dashed #cbd5e1;
-        font-family: monospace;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
+    }
+    .status-card {
+        padding: 20px;
+        border-radius: 12px;
+        margin: 10px 0;
+        text-align: center;
+        font-weight: bold;
     }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 # --- FUNÇÃO DE BUSCA FIPE ---
 def buscar_dados_fipe():
@@ -65,7 +57,7 @@ def buscar_dados_fipe():
     return None
 
 # --- UI PRINCIPAL ---
-st.markdown("# 🏎️ Radar de Leilões <span style='font-size: 0.5em; color: #64748b;'>v2.1</span>", unsafe_allow_stdio=True)
+st.markdown("# 🏎️ Radar de Leilões <span style='font-size: 0.5em; color: #64748b;'>v2.2</span>", unsafe_allow_html=True)
 
 dados_v = buscar_dados_fipe()
 
@@ -84,7 +76,7 @@ if dados_v:
     ipva_prop = (v_fipe * (aliquota_ipva / 100) / 12) * meses_restantes
     comissao = lance * 0.05
     custo_total = lance + comissao + taxas_extras + ipva_prop
-    venda_estimada = v_fipe * 0.75 # Padrão leilão: 25% desc.
+    venda_estimada = v_fipe * 0.75 
     lucro = venda_estimada - custo_total
     roi = (lucro / custo_total) * 100 if custo_total > 0 else 0
 
@@ -92,55 +84,22 @@ if dados_v:
     st.subheader(f"{dados_v['Marca']} {dados_v['Modelo']} {dados_v['AnoModelo']}")
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Tabela FIPE", f"R$ {v_fipe:,.0f}")
-    c2.metric("IPVA ({meses_restantes}m)", f"R$ {ipva_prop:,.0f}")
+    c2.metric(f"IPVA ({meses_restantes}m)", f"R$ {ipva_prop:,.0f}")
     c3.metric("Investimento", f"R$ {custo_total:,.0f}")
     c4.metric("ROI Est.", f"{roi:.1f}%")
 
     # Card de Status
     if lucro > 0:
-        st.markdown(f"""<div style='background-color: #dcfce7; border: 1px solid #22c55e;' class='status-card'>
-            <h2 style='color: #166534; margin:0;'>✅ OPORTUNIDADE</h2>
-            <p style='color: #166534; font-size:1.2rem;'>Lucro líquido estimado: <b>R$ {lucro:,.2f}</b></p>
-        </div>""", unsafe_allow_stdio=True)
+        st.markdown(f"<div style='background-color: #dcfce7; color: #166534;' class='status-card'>✅ OPORTUNIDADE: Lucro Estimado de R$ {lucro:,.2f}</div>", unsafe_allow_html=True)
     else:
-        st.markdown(f"""<div style='background-color: #fee2e2; border: 1px solid #ef4444;' class='status-card'>
-            <h2 style='color: #991b1b; margin:0;'>⚠️ ALTO RISCO</h2>
-            <p style='color: #991b1b; font-size:1.2rem;'>Prejuízo estimado: <b>R$ {abs(lucro):,.2f}</b></p>
-        </div>""", unsafe_allow_stdio=True)
+        st.markdown(f"<div style='background-color: #fee2e2; color: #991b1b;' class='status-card'>⚠️ RISCO: Prejuízo Estimado de R$ {abs(lucro):,.2f}</div>", unsafe_allow_html=True)
 
     # RELATÓRIO PARA WHATSAPP
     st.markdown("### 📲 Compartilhar Análise")
-    texto_whats = f"""*RELATÓRIO DE LEILÃO* 🏎️
----
-*Veículo:* {dados_v['Marca']} {dados_v['Modelo']}
-*Ano:* {dados_v['AnoModelo']}
----
-📊 *DADOS FINANCEIROS:*
-• Tabela FIPE: R$ {v_fipe:,.2f}
-• Lance Proposto: R$ {lance:,.2f}
-• IPVA Proporcional: R$ {ipva_prop:,.2f}
-• Custos (Comissão/Docs/Pátio): R$ {(comissao + taxas_extras):,.2f}
-
-💰 *INVESTIMENTO TOTAL:* R$ {custo_total:,.2f}
-📈 *LUCRO ESTIMADO:* R$ {lucro:,.2f}
-🎯 *RETORNO (ROI):* {roi:.1f}%
-
-_Análise gerada via Radar Leilão Pro_"""
-
+    texto_whats = f"*RELATÓRIO DE LEILÃO*\n\n*Veículo:* {dados_v['Marca']} {dados_v['Modelo']}\n*FIPE:* R$ {v_fipe:,.2f}\n*Lance:* R$ {lance:,.2f}\n*Investimento:* R$ {custo_total:,.2f}\n*Lucro Est.:* R$ {lucro:,.2f}\n*ROI:* {roi:.1f}%"
+    
     with st.expander("Gerar texto para WhatsApp"):
-        st.info("Copie o texto abaixo e cole no seu WhatsApp:")
         st.code(texto_whats, language="text")
-
-    # Detalhamento
-    with st.expander("📄 Ver Planilha de Custos"):
-        df_detalhes = pd.DataFrame({
-            "Descrição": ["Lance Base", "Comissão (5%)", "Taxas/Pátio/Consertos", "IPVA Proporcional", "TOTAL"],
-            "Valor": [f"R$ {lance:,.2f}", f"R$ {comissao:,.2f}", f"R$ {taxas_extras:,.2f}", f"R$ {ipva_prop:,.2f}", f"R$ {custo_total:,.2f}"]
-        })
-        st.table(df_detalhes)
 
 else:
     st.info("👈 Selecione o veículo no menu lateral para iniciar.")
-
-st.sidebar.markdown("---")
-st.sidebar.caption(f"FIPE Ref: {datetime.now().strftime('%m/%Y')}")

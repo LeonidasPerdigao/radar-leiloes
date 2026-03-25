@@ -1,72 +1,81 @@
 import streamlit as st
 import pandas as pd
 import requests
+from datetime import datetime
 
-st.set_page_config(page_title="Radar FIPE & Leilão", layout="wide")
+st.set_page_config(page_title="Radar Leilão Pro", layout="wide")
 
-# --- FUNÇÃO PARA BUSCAR DADOS DA FIPE (API GRATUITA) ---
+# --- FUNÇÃO DE BUSCA FIPE ---
 def buscar_fipe(tipo="carros"):
     base_url = "https://parallelum.com.br"
     
-    # 1. Buscar Marcas
+    # Busca Marcas
     marcas = requests.get(f"{base_url}/{tipo}/marcas").json()
     dict_marcas = {m['nome']: m['codigo'] for m in marcas}
-    marca_sel = st.sidebar.selectbox("Marca", list(dict_marcas.keys()))
+    marca_sel = st.sidebar.selectbox("Escolha a Marca", list(dict_marcas.keys()))
     
-    # 2. Buscar Modelos
+    # Busca Modelos
     modelos = requests.get(f"{base_url}/{tipo}/marcas/{dict_marcas[marca_sel]}/modelos").json()
     dict_modelos = {m['nome']: m['codigo'] for m in modelos['modelos']}
-    modelo_sel = st.sidebar.selectbox("Modelo", list(dict_modelos.keys()))
+    modelo_sel = st.sidebar.selectbox("Escolha o Modelo", list(dict_modelos.keys()))
     
-    # 3. Buscar Anos
+    # Busca Anos
     anos = requests.get(f"{base_url}/{tipo}/marcas/{dict_marcas[marca_sel]}/modelos/{dict_modelos[modelo_sel]}/anos").json()
     dict_anos = {a['nome']: a['codigo'] for a in anos}
-    ano_sel = st.sidebar.selectbox("Ano Modelo", list(dict_anos.keys()))
+    ano_sel = st.sidebar.selectbox("Ano do Veículo", list(dict_anos.keys()))
     
-    # 4. Pegar Valor Final
-    dados_finais = requests.get(f"{base_url}/{tipo}/marcas/{dict_marcas[marca_sel]}/modelos/{dict_modelos[modelo_sel]}/anos/{dict_anos[ano_sel]}").json()
-    return dados_finais
+    dados = requests.get(f"{base_url}/{tipo}/marcas/{dict_marcas[marca_sel]}/modelos/{dict_modelos[modelo_sel]}/anos/{dict_anos[ano_sel]}").json()
+    return dados
 
-st.title("🚗 Analisador Automático: FIPE + Leilão")
+st.title("🚗 Analisador de Leilão com FIPE e IPVA")
 
-# --- SIDEBAR COM INTEGRAÇÃO FIPE ---
-st.sidebar.header("1. Seleção Automática FIPE")
+# --- LÓGICA DE DADOS ---
+st.sidebar.header("1. Consultar Veículo")
 try:
-    dados_veiculo = buscar_fipe()
-    valor_fipe_texto = dados_veiculo['Valor'] # Ex: "R$ 50.000,00"
-    valor_fipe = float(valor_fipe_texto.replace("R$ ", "").replace(".", "").replace(",", "."))
-    
-    st.sidebar.success(f"FIPE Atualizada: {valor_fipe_texto}")
-    st.sidebar.caption(f"Referência: {dados_veiculo['MesReferencia']}")
+    dados_v = buscar_fipe()
+    v_fipe = float(dados_v['Valor'].replace("R$ ", "").replace(".", "").replace(",", "."))
+    st.sidebar.success(f"Valor FIPE: {dados_v['Valor']}")
 except:
-    st.sidebar.error("Erro ao conectar com a FIPE. Tente novamente.")
-    valor_fipe = 0
+    st.sidebar.warning("Aguardando seleção do veículo...")
+    v_fipe = 0
 
-st.sidebar.header("2. Dados do Leilão")
-lance_proposto = st.sidebar.number_input("Seu Lance (R$)", value=int(valor_fipe * 0.5) if valor_fipe > 0 else 10000)
+st.sidebar.header("2. Custos do Leilão")
+lance = st.sidebar.number_input("Seu Lance (R$)", value=int(v_fipe*0.5) if v_fipe > 0 else 10000)
+aliquota_ipva = st.sidebar.slider("Alíquota IPVA do Estado (%)", 1.0, 4.0, 4.0) # 4% é o padrão SP/RJ/MG
 
-# --- CÁLCULOS FINANCEIROS (Taxas Reais Brasil) ---
-comissao_leiloeiro = lance_proposto * 0.05
-taxa_adm = 1500 # Média Brasil
-doc_logistica = 2200 # Documentos + Frete médio
-custo_total = lance_proposto + comissao_leiloeiro + taxa_adm + doc_logistica
+# --- CÁLCULO IPVA PROPORCIONAL ---
+mes_atual = datetime.now().month
+meses_restantes = 12 - (mes_atual - 1) # Calcula do mês atual até dezembro
+ipva_total = v_fipe * (aliquota_ipva / 100)
+ipva_proporcional = (ipva_total / 12) * meses_restantes
 
-# Margem de Segurança: Carro de leilão vende 25% ABAIXO da FIPE
-valor_venda_realista = valor_fipe * 0.75
-lucro_estimado = valor_venda_realista - custo_total
+# --- CUSTOS TOTAIS ---
+comissao = lance * 0.05
+taxa_adm = 1500
+logistica = 1200
+custo_total = lance + comissao + taxa_adm + logistica + ipva_proporcional
 
-# --- EXIBIÇÃO ---
-col1, col2, col3 = st.columns(3)
-col1.metric("Valor FIPE (Mercado)", f"R$ {valor_fipe:,.2f}")
-col2.metric("Custo Total Arremate", f"R$ {custo_total:,.2f}")
-col3.metric("Lucro Est. na Revenda", f"R$ {lucro_estimado:,.2f}")
+# Margem de Revenda (Carro de leilão = FIPE - 25%)
+venda_est = v_fipe * 0.75
+lucro = venda_est - custo_total
 
-if lucro_estimado > (valor_fipe * 0.1):
+# --- PAINEL DE RESULTADOS ---
+c1, c2, c3 = st.columns(3)
+c1.metric("Valor FIPE", f"R$ {v_fipe:,.2f}")
+c2.metric("IPVA Proporcional", f"R$ {ipva_proporcional:,.2f}", f"{meses_restantes} meses")
+c3.metric("Custo Total Arremate", f"R$ {custo_total:,.2f}")
+
+st.divider()
+
+if lucro > 0:
     st.balloons()
-    st.success(f"🎯 EXCELENTE NEGÓCIO! Margem de {((lucro_estimado/custo_total)*100):.1f}%")
-elif lucro_estimado > 0:
-    st.warning("⚠️ CUIDADO: Margem muito apertada.")
+    st.success(f"💰 Lucro Estimado de R$ {lucro:,.2f} na revenda!")
 else:
-    st.error("❌ PREJUÍZO: O custo total supera o valor de revenda de leilão.")
+    st.error(f"📉 Prejuízo Estimado de R$ {lucro:,.2f}. Lance muito alto!")
 
-st.info(f"O cálculo considera que você venderá o carro por **R$ {valor_venda_realista:,.2f}** (25% abaixo da FIPE), que é o padrão para veículos com passagem por leilão.")
+st.write("### Resumo de Despesas")
+df = pd.DataFrame({
+    "Despesa": ["Lance", "Comissão (5%)", "Taxa Pátio", "Logística", "IPVA Proporcional"],
+    "Valor (R$)": [f"R$ {lance:,.2f}", f"R$ {comissao:,.2f}", f"R$ {taxa_adm:,.2f}", f"R$ {logistica:,.2f}", f"R$ {ipva_proporcional:,.2f}"]
+})
+st.table(df)

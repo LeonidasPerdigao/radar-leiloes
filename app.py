@@ -3,103 +3,74 @@ import pandas as pd
 import requests
 from datetime import datetime
 
-# Configuração da Página
 st.set_page_config(page_title="Radar Leilão Pro", page_icon="🏎️", layout="wide")
 
-# --- CSS CORRIGIDO (Dando vida ao layout moderno) ---
-st.markdown("""
-    <style>
-    .main { background-color: #f8f9fa; }
-    div[data-testid="stMetric"] {
-        background-color: #ffffff;
-        padding: 15px;
-        border-radius: 12px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        border: 1px solid #e2e8f0;
-    }
-    .status-card {
-        padding: 20px;
-        border-radius: 12px;
-        margin: 10px 0;
-        text-align: center;
-        font-weight: bold;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# --- FUNÇÃO DE BUSCA FIPE ---
+# Função para buscar dados com tratamento de erro visual
 def buscar_dados_fipe():
     base_url = "https://parallelum.com.br"
     try:
-        res_marcas = requests.get(base_url, timeout=5)
-        if res_marcas.status_code != 200: return None
-        marcas = res_marcas.json()
+        # Tenta buscar as marcas
+        res = requests.get(base_url, timeout=10)
+        if res.status_code != 200:
+            st.error("O servidor da FIPE não respondeu. Tente atualizar a página (F5).")
+            return None
+        
+        marcas = res.json()
         dict_marcas = {m['nome']: m['codigo'] for m in marcas}
         
-        st.sidebar.markdown("### 🔍 Veículo")
-        marca_sel = st.sidebar.selectbox("Marca", ["Selecione"] + sorted(list(dict_marcas.keys())))
+        # Colocamos os seletores na tela PRINCIPAL para você ver se funciona
+        st.write("### 🔍 1. Escolha o Veículo")
+        col_m, col_mod, col_ano = st.columns(3)
+        
+        with col_m:
+            marca_sel = st.selectbox("Marca", ["Selecione"] + sorted(list(dict_marcas.keys())))
         
         if marca_sel != "Selecione":
-            cod_marca = dict_marcas[marca_sel]
-            modelos = requests.get(f"{base_url}/{cod_marca}/modelos", timeout=5).json()['modelos']
-            dict_modelos = {m['nome']: m['codigo'] for m in modelos}
-            modelo_sel = st.sidebar.selectbox("Modelo", ["Selecione"] + sorted(list(dict_modelos.keys())))
+            cod_m = dict_marcas[marca_sel]
+            with col_mod:
+                modelos = requests.get(f"{base_url}/{cod_m}/modelos", timeout=10).json()['modelos']
+                dict_mod = {m['nome']: m['codigo'] for m in modelos}
+                mod_sel = st.selectbox("Modelo", ["Selecione"] + sorted(list(dict_mod.keys())))
             
-            if modelo_sel != "Selecione":
-                cod_modelo = dict_modelos[modelo_sel]
-                anos = requests.get(f"{base_url}/{cod_marca}/modelos/{cod_modelo}/anos", timeout=5).json()
-                dict_anos = {a['nome']: a['codigo'] for a in anos}
-                ano_sel = st.sidebar.selectbox("Ano", ["Selecione"] + list(dict_anos.keys()))
+            if mod_sel != "Selecione":
+                cod_mod = dict_mod[mod_sel]
+                with col_ano:
+                    anos = requests.get(f"{base_url}/{cod_m}/modelos/{cod_mod}/anos", timeout=10).json()
+                    dict_anos = {a['nome']: a['codigo'] for a in anos}
+                    ano_sel = st.selectbox("Ano", ["Selecione"] + list(dict_anos.keys()))
                 
                 if ano_sel != "Selecione":
-                    return requests.get(f"{base_url}/{cod_marca}/modelos/{cod_modelo}/anos/{dict_anos[ano_sel]}", timeout=5).json()
-    except: return None
+                    return requests.get(f"{base_url}/{cod_m}/modelos/{cod_mod}/anos/{dict_anos[ano_sel]}", timeout=10).json()
+    except Exception as e:
+        st.warning(f"Erro de Conexão: Certifique-se de que o arquivo 'requirements.txt' tem a palavra 'requests'.")
+        return None
     return None
 
 # --- UI PRINCIPAL ---
-st.markdown("# 🏎️ Radar de Leilões <span style='font-size: 0.5em; color: #64748b;'>v2.2</span>", unsafe_allow_html=True)
+st.markdown("# 🏎️ Radar de Leilões v2.3")
+st.divider()
 
 dados_v = buscar_dados_fipe()
 
 if dados_v:
     v_fipe = float(dados_v['Valor'].replace("R$ ", "").replace(".", "").replace(",", "."))
     
-    # Entradas na Barra Lateral
-    st.sidebar.markdown("### 💰 Finanças")
+    st.sidebar.header("💰 Configurações")
     lance = st.sidebar.number_input("Seu Lance (R$)", value=int(v_fipe*0.5))
-    aliquota_ipva = st.sidebar.slider("IPVA (%)", 1.0, 4.0, 4.0)
-    taxas_extras = st.sidebar.number_input("Consertos/Pátio/Docs (R$)", value=3500)
-
-    # Cálculos
-    mes_atual = datetime.now().month
-    meses_restantes = 12 - (mes_atual - 1)
-    ipva_prop = (v_fipe * (aliquota_ipva / 100) / 12) * meses_restantes
-    comissao = lance * 0.05
-    custo_total = lance + comissao + taxas_extras + ipva_prop
-    venda_estimada = v_fipe * 0.75 
-    lucro = venda_estimada - custo_total
-    roi = (lucro / custo_total) * 100 if custo_total > 0 else 0
-
-    # Dashboard de Métricas
-    st.subheader(f"{dados_v['Marca']} {dados_v['Modelo']} {dados_v['AnoModelo']}")
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Tabela FIPE", f"R$ {v_fipe:,.0f}")
-    c2.metric(f"IPVA ({meses_restantes}m)", f"R$ {ipva_prop:,.0f}")
-    c3.metric("Investimento", f"R$ {custo_total:,.0f}")
-    c4.metric("ROI Est.", f"{roi:.1f}%")
-
-    # Card de Status
-    if lucro > 0:
-        st.markdown(f"<div style='background-color: #dcfce7; color: #166534;' class='status-card'>✅ OPORTUNIDADE: Lucro Estimado de R$ {lucro:,.2f}</div>", unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div style='background-color: #fee2e2; color: #991b1b;' class='status-card'>⚠️ RISCO: Prejuízo Estimado de R$ {abs(lucro):,.2f}</div>", unsafe_allow_html=True)
-
-    # RELATÓRIO PARA WHATSAPP
-    st.markdown("### 📲 Compartilhar Análise")
-    texto_whats = f"*RELATÓRIO DE LEILÃO*\n\n*Veículo:* {dados_v['Marca']} {dados_v['Modelo']}\n*FIPE:* R$ {v_fipe:,.2f}\n*Lance:* R$ {lance:,.2f}\n*Investimento:* R$ {custo_total:,.2f}\n*Lucro Est.:* R$ {lucro:,.2f}\n*ROI:* {roi:.1f}%"
+    taxas = st.sidebar.number_input("Consertos/Pátio (R$)", value=3500)
     
-    with st.expander("Gerar texto para WhatsApp"):
-        st.code(texto_whats, language="text")
+    # Cálculos Simples
+    mes_atual = datetime.now().month
+    meses_rest = 12 - (mes_atual - 1)
+    ipva = (v_fipe * 0.04 / 12) * meses_rest
+    custo_total = lance + (lance * 0.05) + taxas + ipva
+    lucro = (v_fipe * 0.75) - custo_total
 
+    # Dashboard
+    st.success(f"### Análise: {dados_v['Modelo']} ({dados_v['AnoModelo']})")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Valor FIPE", f"R$ {v_fipe:,.2f}")
+    c2.metric("Investimento Total", f"R$ {custo_total:,.2f}")
+    c3.metric("Lucro Estimado", f"R$ {lucro:,.2f}")
 else:
-    st.info("👈 Selecione o veículo no menu lateral para iniciar.")
+    st.info("Aguardando você selecionar a **Marca** acima para carregar os dados...")

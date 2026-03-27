@@ -1,82 +1,85 @@
 import streamlit as st
 import pandas as pd
-import requests
-from datetime import datetime
 
-st.set_page_config(page_title="Radar Leilão Pro", page_icon="🏎️", layout="wide")
+st.set_page_config(page_title="Radar Leilão", page_icon="🏎️", layout="wide")
 
-# Função com endereço reserva (Plano B)
-def buscar_dados_fipe():
-    # Tentamos o endereço principal primeiro
-    urls = [
-        "https://parallelum.com.br",
-        "https://fipe.parallelum.com.br" # Servidor reserva
-    ]
-    
-    res = None
-    for url in urls:
-        try:
-            res = requests.get(url, timeout=10)
-            if res.status_code == 200:
-                break
-        except:
-            continue
-            
-    if not res or res.status_code != 200:
-        st.error("Servidor da FIPE ocupado. Aguarde 30 segundos e clique em 'Tentar Novamente'.")
-        if st.button("Tentar Novamente"):
-            st.rerun()
-        return None
+st.title("🏎️ Radar de Leilões")
 
-    marcas = res.json()
-    dict_marcas = {m['nome']: m['codigo'] for m in marcas}
-    
-    st.write("### 🔍 1. Escolha o Veículo")
-    col_m, col_mod, col_ano = st.columns(3)
-    
-    with col_m:
-        marca_sel = st.selectbox("Marca", ["Selecione"] + sorted(list(dict_marcas.keys())))
-    
-    if marca_sel != "Selecione":
-        cod_m = dict_marcas[marca_sel]
-        # Busca modelos no mesmo servidor que funcionou
-        base = url.replace("/marcas", "")
-        modelos_res = requests.get(f"{base}/marcas/{cod_m}/modelos").json()
-        dict_mod = {m['nome']: m['codigo'] for m in modelos_res['modelos']}
-        
-        with col_mod:
-            mod_sel = st.selectbox("Modelo", ["Selecione"] + sorted(list(dict_mod.keys())))
-        
-        if mod_sel != "Selecione":
-            cod_mod = dict_mod[mod_sel]
-            anos = requests.get(f"{base}/marcas/{cod_m}/modelos/{cod_mod}/anos").json()
-            dict_anos = {a['nome']: a['codigo'] for a in anos}
-            
-            with col_ano:
-                ano_sel = st.selectbox("Ano", ["Selecione"] + list(dict_anos.keys()))
-            
-            if ano_sel != "Selecione":
-                return requests.get(f"{base}/marcas/{cod_m}/modelos/{cod_mod}/anos/{dict_anos[ano_sel]}").json()
-    return None
+MARCAS = {
+    "Fiat": ["Uno", "Strada", "Argo", "Cronos", "Mobi", "Palio", "Pulse"],
+    "Volkswagen": ["Gol", "Voyage", "Polo", "Virtus", "Tiguan", "T-Cross"],
+    "Chevrolet": ["Onix", "Tracker", "Cruze", "Equinox", "Montana", "Celta"],
+    "Ford": ["Ka", "Fiesta", "Focus", "Fusion", "Ecosport", "Territory"],
+    "Toyota": ["Corolla", "Etios", "Yaris", "Hilux", "RAV4", "Camry"],
+    "Honda": ["City", "Civic", "HR-V", "CR-V", "Accord", "Fit"],
+    "Hyundai": ["HB20", "I30", "Creta", "Tucson", "Santa Fe", "Venue"],
+    "Kia": ["Cerato", "Picanto", "Sorento", "Sportage", "Niro", "Carens"],
+}
 
-# --- RESTO DO APP ---
-st.markdown("# 🏎️ Radar de Leilões")
-dados_v = buscar_dados_fipe()
+ANOS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "2017", "2016"]
 
-if dados_v:
-    v_fipe = float(dados_v['Valor'].replace("R$ ", "").replace(".", "").replace(",", "."))
-    st.sidebar.success(f"FIPE: {dados_v['Valor']}")
-    lance = st.sidebar.number_input("Seu Lance (R$)", value=int(v_fipe*0.5))
-    
-    # Cálculo IPVA Proporcional Março/2026
-    mes_rest = 10 # Março a Dezembro
-    ipva = (v_fipe * 0.04 / 12) * mes_rest
-    total = lance + (lance * 0.05) + 3500 + ipva
-    lucro = (v_fipe * 0.75) - total
+st.write("### 🔍 1. Selecione o Veículo")
+col1, col2, col3 = st.columns(3)
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Valor FIPE", f"R$ {v_fipe:,.2f}")
-    c2.metric("Investimento", f"R$ {total:,.2f}")
-    c3.metric("Lucro Est.", f"R$ {lucro:,.2f}")
+with col1:
+    marca = st.selectbox("Marca", ["Selecione"] + list(MARCAS.keys()))
+
+with col2:
+    modelos = MARCAS.get(marca, ["Selecione"])
+    modelo = st.selectbox("Modelo", ["Selecione"] + modelos if marca != "Selecione" else ["Selecione"])
+
+with col3:
+    ano = st.selectbox("Ano", ["Selecione"] + ANOS)
+
+if marca == "Selecione" or modelo == "Selecione" or ano == "Selecione":
+    st.stop()
+
+st.write("### 💰 2. Análise")
+ano_num = int(ano)
+valor_base = 50000
+depreciacao = (2024 - ano_num) * 0.08
+valor_fipe = valor_base * (1 - depreciacao)
+
+col1, col2 = st.columns(2)
+with col1:
+    st.metric("Valor FIPE", f"R$ {valor_fipe:,.2f}")
+with col2:
+    lance = st.number_input("Seu Lance (R$)", value=int(valor_fipe * 0.5), step=1000, min_value=1000)
+
+taxa = lance * 0.05
+taxa_fixa = 3500
+ipva = (valor_fipe * 0.04 / 12) * 10
+total = lance + taxa + taxa_fixa + ipva
+revenda = valor_fipe * 0.75
+lucro = revenda - total
+
+st.markdown("---")
+m1, m2, m3, m4 = st.columns(4)
+with m1:
+    st.metric("Investimento", f"R$ {total:,.2f}")
+with m2:
+    st.metric("Revenda (75%)", f"R$ {revenda:,.2f}")
+with m3:
+    cor = "🟢" if lucro > 0 else "🔴"
+    st.metric(f"{cor} Lucro", f"R$ {lucro:,.2f}")
+with m4:
+    if lucro > 0:
+        roi = (lucro / total) * 100
+        st.metric("ROI", f"{roi:.1f}%")
+
+st.markdown("---")
+st.write("### 📋 Custos")
+df = pd.DataFrame([
+    {"Item": "Lance", "Valor": f"R$ {lance:,.2f}"},
+    {"Item": "Taxa (5%)", "Valor": f"R$ {taxa:,.2f}"},
+    {"Item": "Taxa Fixa", "Valor": f"R$ {taxa_fixa:,.2f}"},
+    {"Item": "IPVA", "Valor": f"R$ {ipva:,.2f}"},
+])
+st.dataframe(df, use_container_width=True, hide_index=True)
+st.metric("TOTAL", f"R$ {total:,.2f}")
+
+st.markdown("---")
+if lucro > 0:
+    st.success(f"✅ Viável! Lucro: R$ {lucro:,.2f}")
 else:
-    st.info("Aguardando seleção da marca acima...")
+    st.error(f"❌ Inviável! Prejuízo: R$ {abs(lucro):,.2f}")
